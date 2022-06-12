@@ -65,8 +65,12 @@ class Decoder(nn.models.Model):
         # embedding tokens
         x = self.embedding.forward(indices)
 
+        # generate mask
+        _, sentence_length, _ = x.shape
+        mask = np.triu(np.ones((sentence_length, sentence_length)), k=1)
+
         # first attention
-        x = self.attention1.forward(x, x, x)
+        x = self.attention1.forward(x, x, x, mask)
 
         # second attention
         x = self.attention2.forward(x, encoder_output, encoder_output)

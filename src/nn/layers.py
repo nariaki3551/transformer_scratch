@@ -133,12 +133,13 @@ class ScaledDotProductAttention:
             np.zeros_like(self.Wv, dtype=grad_dtype),
         ]
 
-    def forward(self, xq, xk, xv):
+    def forward(self, xq, xk, xv, mask=None):
         """
         Args:
             xq (batch_size, sentence_length, embed_dim), bse
             xk (batch_size, sentence_length, embed_dim), bse
             xv (batch_size, sentence_length, embed_dim), bse
+            mask (sentence_length, sentence_length), ss
 
         Returns:
             out (batch_size, sentence_length, embed_dim)
@@ -156,6 +157,13 @@ class ScaledDotProductAttention:
         s = np.einsum("bie,bje->bij", self.q, self.k) / np.sqrt(
             embed_dim
         )  # bse,bse->bss
+
+        # mask
+        self.mask = mask
+        if mask is not None:
+            for i in range(batch_size):
+                s[i][mask == 0] = 0.0
+
         self.f = self.softmax.forward(s)  # bss
 
         out = np.einsum("bij,bjk->bik", self.f, self.v)  # bss,bse->bse
@@ -177,6 +185,9 @@ class ScaledDotProductAttention:
         # df = np.dot(dout, self.v.T)
         df = np.einsum("bij,bkj->bik", dout, self.v)  # bse,bse->bss
         ds = self.softmax.backward(df) / np.sqrt(self.input_dim)  # bss
+        if self.mask is not None:
+            for i in range(batch_size):
+                ds[i][self.mask == 0] = 0.0
 
         # dq = np.dot(ds, self.k)
         dq = np.einsum("bij,bjk->bik", ds, self.k)  # bss,bse->bse
@@ -210,14 +221,13 @@ class ScaledDotProductAttention:
         self.xq = None
         self.xk = None
         self.xv = None
+        self.mask = None
 
         return dxq, dxk, dxv
 
 
 class MultiHeadAttention:
-    def __init__(
-        self, input_dim, num_heads, mask=None, dtype=np.float32, grad_dtype=np.float64
-    ):
+    def __init__(self, input_dim, num_heads, dtype=np.float32, grad_dtype=np.float64):
         self.num_heads = num_heads
         self.head_dim = input_dim // num_heads
         assert self.head_dim * num_heads == input_dim
@@ -233,18 +243,19 @@ class MultiHeadAttention:
         self.params = sum([layer.params for layer in self.layers], start=[])
         self.grads = sum([layer.grads for layer in self.layers], start=[])
 
-    def forward(self, xq, xk, xv):
+    def forward(self, xq, xk, xv, mask=None):
         """
         Args:
             xq (batch_size, sentence_length, embed_dim), bse
             xk (batch_size, sentence_length, embed_dim), bse
             xv (batch_size, sentence_length, embed_dim), bse
+            mask (sentence_length, sentence_length), ss
 
         Returns:
             out (batch_size, sentence_length, embed_dim)
         """
         outputs = [
-            attention.forward(xq, xk, xv) for attention in self.attentions
+            attention.forward(xq, xk, xv, mask) for attention in self.attentions
         ]  # each (batch_size, sentence_length, head_dim)
         out = np.concatenate(
             outputs, axis=-1
