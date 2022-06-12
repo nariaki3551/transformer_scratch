@@ -56,16 +56,16 @@ class Encoder(nn.models.Model):
         x = self.embedding.forward(indices)
 
         # attention
-        x = self.attention.forward(x, x, x)
+        x = self.attention.forward(x, x, x) + x
 
         # feed forward
-        x = self.feed_forward.forward(x)
+        x = self.feed_forward.forward(x) + x
         return x
 
     def backward(self, dout):
-        dout = self.feed_forward.backward(dout)
+        dout = self.feed_forward.backward(dout) + dout
         dxq, dxk, dxv = self.attention.backward(dout)
-        dout = dxq + dxk + dxv
+        dout = dxq + dxk + dxv + dout
         return dout
 
 
@@ -104,13 +104,13 @@ class Decoder(nn.models.Model):
         mask = np.triu(np.ones((sentence_length, sentence_length)), k=1)
 
         # first attention
-        x = self.attention1.forward(x, x, x, mask)
+        x = self.attention1.forward(x, x, x, mask) + x
 
         # second attention
-        x = self.attention2.forward(x, encoder_output, encoder_output)
+        x = self.attention2.forward(x, encoder_output, encoder_output) + x
 
         # feed forward
-        x = self.feed_forward.forward(x)
+        x = self.feed_forward.forward(x) + x
 
         # affine conversion
         x = self.affine.forward(x)
@@ -119,14 +119,14 @@ class Decoder(nn.models.Model):
     def backward(self, dout):
         dout = self.affine.backward(dout)
 
-        dout = self.feed_forward.backward(dout)
+        dout = self.feed_forward.backward(dout) + dout
 
         dxq, dxk, dxv = self.attention2.backward(dout)
-        dout = dxq
+        dout = dxq + dout
         dencoder_output = dxk + dxv
 
         dxq, dxk, dxv = self.attention1.backward(dout)
-        dout = dxq + dxk + dxv
+        dout = dxq + dxk + dxv + dout
 
         dout = self.embedding.backward(dout)
         return dout, dencoder_output
