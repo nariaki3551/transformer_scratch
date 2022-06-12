@@ -8,10 +8,10 @@ import nn.embeddings
 
 
 class Encoder(nn.models.Model):
-    def __init__(self, vocab, embed_dim, sentence_length):
+    def __init__(self, vocab, embed_dim, num_heads, sentence_length):
         super(Encoder, self).__init__()
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
-        self.attention = nn.layers.ScaledDotProductAttention(embed_dim)
+        self.attention = nn.layers.MultiHeadAttention(embed_dim, num_heads)
 
         self.layers = [self.embedding, self.attention]
         self.params = sum([layer.params for layer in self.layers], start=[])
@@ -38,11 +38,11 @@ class Encoder(nn.models.Model):
 
 
 class Decoder(nn.models.Model):
-    def __init__(self, vocab, embed_dim, sentence_length):
+    def __init__(self, vocab, embed_dim, num_heads, sentence_length):
         super(Decoder, self).__init__()
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
-        self.attention1 = nn.layers.ScaledDotProductAttention(embed_dim)
-        self.attention2 = nn.layers.ScaledDotProductAttention(embed_dim)
+        self.attention1 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
+        self.attention2 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.affine = nn.layers.Linear(self.embedding.get_dim(), len(vocab))
 
         self.layers = [
@@ -95,17 +95,20 @@ class Transformer(nn.models.Model):
         vocab_ja,
         vocab_en,
         embed_dim,
+        num_heads,
         sentence_length,
     ):
         super(Transformer, self).__init__()
         self.encoder = Encoder(
             vocab_en,
             embed_dim,
+            num_heads,
             sentence_length,
         )
         self.decoder = Decoder(
             vocab_ja,
             embed_dim,
+            num_heads,
             sentence_length,
         )
 

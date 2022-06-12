@@ -30,6 +30,7 @@ def main():
         vocab_ja,
         vocab_en,
         args.embed_dim,
+        args.num_heads,
         sentence_length,
     )
 
@@ -260,6 +261,12 @@ if __name__ == "__main__":
         type=int,
         default=16,
         help="dimension of embedding layer",
+    )
+    parser.add_argument(
+        "--num_heads",
+        type=int,
+        default=2,
+        help="number of heads of MultiHeadAttention",
     )
 
     args = parser.parse_args()

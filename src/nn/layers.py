@@ -212,3 +212,71 @@ class ScaledDotProductAttention:
         self.xv = None
 
         return dxq, dxk, dxv
+
+
+class MultiHeadAttention:
+    def __init__(
+        self, input_dim, num_heads, mask=None, dtype=np.float32, grad_dtype=np.float64
+    ):
+        self.num_heads = num_heads
+        self.head_dim = input_dim // num_heads
+        assert self.head_dim * num_heads == input_dim
+
+        self.attentions = [
+            ScaledDotProductAttention(input_dim, self.head_dim, dtype, grad_dtype)
+            for _ in range(num_heads)
+        ]
+        self.linear = Linear(input_dim, input_dim)
+        self.mask = None
+
+        self.layers = self.attentions + [self.linear]
+        self.params = sum([layer.params for layer in self.layers], start=[])
+        self.grads = sum([layer.grads for layer in self.layers], start=[])
+
+    def forward(self, xq, xk, xv):
+        """
+        Args:
+            xq (batch_size, sentence_length, embed_dim), bse
+            xk (batch_size, sentence_length, embed_dim), bse
+            xv (batch_size, sentence_length, embed_dim), bse
+
+        Returns:
+            out (batch_size, sentence_length, embed_dim)
+        """
+        outputs = [
+            attention.forward(xq, xk, xv) for attention in self.attentions
+        ]  # each (batch_size, sentence_length, head_dim)
+        out = np.concatenate(
+            outputs, axis=-1
+        )  # (batch_size, sentence_length, embed_dim)
+        out = self.linear.forward(out)  # (batch_size, sentence_length, embed_dim)
+        return out
+
+    def backward(self, dout):
+        """
+        Args: dout (batch_size, sentence_length, embed_dim)
+
+        Returns:
+            dxq (batch_size, sentence_length, embed_dim)
+            dxk (batch_size, sentence_length, embed_dim)
+            dxv (batch_size, sentence_length, embed_dim)
+        """
+        batch_size, sentence_length, embed_dim = dout.shape
+        assert self.num_heads * self.head_dim == embed_dim
+
+        dout = self.linear.backward(
+            dout
+        )  # (batch_size, sentence_length, num_heads * head_dim)
+        dout = dout.reshape(
+            (batch_size, sentence_length, self.num_heads, self.head_dim)
+        )
+        dout = np.einsum(
+            "bshe->hbse", dout
+        )  # (num_heads, batch_size, sentence_length, head_dim)
+        douts = [
+            self.attentions[i].backward(dout[i]) for i in range(self.num_heads)
+        ]  # each tuple of triple of (batch_size, sentence_length, embed_dim)
+        dxq = sum([dout[0] for dout in douts])
+        dxk = sum([dout[1] for dout in douts])
+        dxv = sum([dout[2] for dout in douts])
+        return dxq, dxk, dxv
