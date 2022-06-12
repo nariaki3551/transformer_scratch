@@ -32,6 +32,7 @@ def main():
         args.embed_dim,
         args.feed_forward_dim,
         args.num_heads,
+        args.num_layers,
         sentence_length,
     )
 
@@ -274,6 +275,12 @@ if __name__ == "__main__":
         type=int,
         default=2,
         help="number of heads of MultiHeadAttention",
+    )
+    parser.add_argument(
+        "--num_layers",
+        type=int,
+        default=2,
+        help="number of attention-blocks of Decoder and Encoder",
     )
 
     args = parser.parse_args()
