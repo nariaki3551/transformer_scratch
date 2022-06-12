@@ -34,10 +34,39 @@ class FeedForward(nn.models.Model):
         return dout
 
 
+class PositionalEncoder(nn.models.Model):
+    def __init__(self, embed_dim, sentence_length, dtype=np.float16):
+        super(PositionalEncoder, self).__init__()
+        self.pe = np.zeros((sentence_length, embed_dim), dtype=dtype)
+        for pos in range(sentence_length):
+            for i in range(0, embed_dim, 2):
+                self.pe[pos, i] = math.sin(pos / (10000 ** ((2 * i) / embed_dim)))
+                self.pe[pos, i + 1] = math.cos(
+                    pos / (10000 ** ((2 * (i + 1)) / embed_dim))
+                )
+
+        self.params = []
+        self.grads = []
+
+    def forward(self, x):
+        """
+        Args:
+          x: (batch_size, sentence_length, embed_dim)
+        Returns:
+          (batch_size, sentence_length, embed_dim)
+        """
+        sentence_length = x.shape[1]
+        return x + self.pe[:sentence_length, :]
+
+    def backward(self, dout):
+        return dout
+
+
 class Encoder(nn.models.Model):
     def __init__(self, vocab, embed_dim, feed_forward_dim, num_heads, sentence_length):
         super(Encoder, self).__init__()
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
+        self.positional_encoder = PositionalEncoder(embed_dim, sentence_length)
         self.attention = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.feed_forward = FeedForward(embed_dim, feed_forward_dim)
         self.norm1 = nn.layers.LayerNorm()
@@ -56,6 +85,7 @@ class Encoder(nn.models.Model):
         """
         # embedding tokens
         x = self.embedding.forward(indices)
+        x = self.positional_encoder.forward(x)
 
         # attention
         x = self.norm1.forward(self.attention.forward(x, x, x) + x)
@@ -71,6 +101,9 @@ class Encoder(nn.models.Model):
         dout = self.norm1.backward(dout)
         dxq, dxk, dxv = self.attention.backward(dout)
         dout = dxq + dxk + dxv + dout
+
+        dout = self.positional_encoder.backward(dout)
+        dout = self.embedding.backward(dout)
         return dout
 
 
@@ -78,6 +111,7 @@ class Decoder(nn.models.Model):
     def __init__(self, vocab, embed_dim, feed_forward_dim, num_heads, sentence_length):
         super(Decoder, self).__init__()
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
+        self.positional_encoder = PositionalEncoder(embed_dim, sentence_length)
         self.attention1 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.attention2 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.feed_forward = FeedForward(embed_dim, feed_forward_dim)
@@ -106,6 +140,7 @@ class Decoder(nn.models.Model):
         """
         # embedding tokens
         x = self.embedding.forward(indices)
+        x = self.positional_encoder.forward(x)
 
         # generate mask
         _, sentence_length, _ = x.shape
@@ -141,6 +176,7 @@ class Decoder(nn.models.Model):
         dxq, dxk, dxv = self.attention1.backward(dout)
         dout = dxq + dxk + dxv + dout
 
+        dout = self.positional_encoder.backward(dout)
         dout = self.embedding.backward(dout)
         return dout, dencoder_output
 
