@@ -40,6 +40,8 @@ class Encoder(nn.models.Model):
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
         self.attention = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.feed_forward = FeedForward(embed_dim, feed_forward_dim)
+        self.norm1 = nn.layers.LayerNorm()
+        self.norm2 = nn.layers.LayerNorm()
 
         self.layers = [self.embedding, self.attention, self.feed_forward]
         self.params = sum([layer.params for layer in self.layers], start=[])
@@ -56,14 +58,17 @@ class Encoder(nn.models.Model):
         x = self.embedding.forward(indices)
 
         # attention
-        x = self.attention.forward(x, x, x) + x
+        x = self.norm1.forward(self.attention.forward(x, x, x) + x)
 
         # feed forward
-        x = self.feed_forward.forward(x) + x
+        x = self.norm2.forward(self.feed_forward.forward(x) + x)
         return x
 
     def backward(self, dout):
+        dout = self.norm2.backward(dout)
         dout = self.feed_forward.backward(dout) + dout
+
+        dout = self.norm1.backward(dout)
         dxq, dxk, dxv = self.attention.backward(dout)
         dout = dxq + dxk + dxv + dout
         return dout
@@ -77,6 +82,9 @@ class Decoder(nn.models.Model):
         self.attention2 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.feed_forward = FeedForward(embed_dim, feed_forward_dim)
         self.affine = nn.layers.Linear(self.embedding.get_dim(), len(vocab))
+        self.norm1 = nn.layers.LayerNorm()
+        self.norm2 = nn.layers.LayerNorm()
+        self.norm3 = nn.layers.LayerNorm()
 
         self.layers = [
             self.embedding,
@@ -104,13 +112,15 @@ class Decoder(nn.models.Model):
         mask = np.triu(np.ones((sentence_length, sentence_length)), k=1)
 
         # first attention
-        x = self.attention1.forward(x, x, x, mask) + x
+        x = self.norm1.forward(self.attention1.forward(x, x, x, mask) + x)
 
         # second attention
-        x = self.attention2.forward(x, encoder_output, encoder_output) + x
+        x = self.norm2.forward(
+            self.attention2.forward(x, encoder_output, encoder_output) + x
+        )
 
         # feed forward
-        x = self.feed_forward.forward(x) + x
+        x = self.norm3.forward(self.feed_forward.forward(x) + x)
 
         # affine conversion
         x = self.affine.forward(x)
@@ -119,12 +129,15 @@ class Decoder(nn.models.Model):
     def backward(self, dout):
         dout = self.affine.backward(dout)
 
+        dout = self.norm3.backward(dout)
         dout = self.feed_forward.backward(dout) + dout
 
+        dout = self.norm2.backward(dout)
         dxq, dxk, dxv = self.attention2.backward(dout)
         dout = dxq + dout
         dencoder_output = dxk + dxv
 
+        dout = self.norm1.backward(dout)
         dxq, dxk, dxv = self.attention1.backward(dout)
         dout = dxq + dxk + dxv + dout
 

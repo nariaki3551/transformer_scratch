@@ -101,6 +101,31 @@ class CrossEntropyLoss:
         return dx
 
 
+class LayerNorm:
+    def __init__(self):
+        self.m = None
+        self.v = None
+        self.eps = 1e-8
+
+        self.params = []
+        self.grads = []
+
+    def forward(self, x):
+        xdtype = x.dtype
+        x = x.astype(np.float64)
+        self.m = np.mean(x, axis=0)
+        self.v = np.sqrt(np.var(x, axis=0))
+        out = (x - self.m) / (self.v + self.eps)
+        out = out.astype(xdtype)
+        return out
+
+    def backward(self, dout):
+        dout = dout * (self.v + self.eps) + self.m
+        self.m = None
+        self.v = None
+        return dout
+
+
 class ScaledDotProductAttention:
     def __init__(
         self, input_dim, output_dim=None, dtype=np.float32, grad_dtype=np.float64
