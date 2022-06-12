@@ -30,6 +30,7 @@ def main():
         vocab_ja,
         vocab_en,
         args.embed_dim,
+        args.feed_forward_dim,
         args.num_heads,
         sentence_length,
     )
@@ -261,6 +262,12 @@ if __name__ == "__main__":
         type=int,
         default=16,
         help="dimension of embedding layer",
+    )
+    parser.add_argument(
+        "--feed_forward_dim",
+        type=int,
+        default=32,
+        help="dimension of hidden layer of feed forward",
     )
     parser.add_argument(
         "--num_heads",

@@ -7,13 +7,41 @@ import nn.layers
 import nn.embeddings
 
 
+class FeedForward(nn.models.Model):
+    def __init__(self, model_dim, feed_forward_dim):
+        super(FeedForward, self).__init__()
+        self.layer1 = nn.layers.Linear(model_dim, feed_forward_dim)
+        self.layer2 = nn.layers.Linear(feed_forward_dim, model_dim)
+
+        self.layers = [self.layer1, self.layer2]
+        self.params = sum([layer.params for layer in self.layers], start=[])
+        self.grads = sum([layer.grads for layer in self.layers], start=[])
+
+    def forward(self, x):
+        """
+        Args:
+          x: (batch_size, sentence_length, embed_dim)
+        Returns:
+          (batch_size, sentence_length, embed_dim)
+        """
+        x = self.layer1.forward(x)
+        x = self.layer2.forward(x)
+        return x
+
+    def backward(self, dout):
+        dout = self.layer2.backward(dout)
+        dout = self.layer1.backward(dout)
+        return dout
+
+
 class Encoder(nn.models.Model):
-    def __init__(self, vocab, embed_dim, num_heads, sentence_length):
+    def __init__(self, vocab, embed_dim, feed_forward_dim, num_heads, sentence_length):
         super(Encoder, self).__init__()
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
         self.attention = nn.layers.MultiHeadAttention(embed_dim, num_heads)
+        self.feed_forward = FeedForward(embed_dim, feed_forward_dim)
 
-        self.layers = [self.embedding, self.attention]
+        self.layers = [self.embedding, self.attention, self.feed_forward]
         self.params = sum([layer.params for layer in self.layers], start=[])
         self.grads = sum([layer.grads for layer in self.layers], start=[])
 
@@ -29,26 +57,32 @@ class Encoder(nn.models.Model):
 
         # attention
         x = self.attention.forward(x, x, x)
+
+        # feed forward
+        x = self.feed_forward.forward(x)
         return x
 
     def backward(self, dout):
+        dout = self.feed_forward.backward(dout)
         dxq, dxk, dxv = self.attention.backward(dout)
         dout = dxq + dxk + dxv
         return dout
 
 
 class Decoder(nn.models.Model):
-    def __init__(self, vocab, embed_dim, num_heads, sentence_length):
+    def __init__(self, vocab, embed_dim, feed_forward_dim, num_heads, sentence_length):
         super(Decoder, self).__init__()
         self.embedding = nn.embeddings.Random(vocab, embed_dim)
         self.attention1 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
         self.attention2 = nn.layers.MultiHeadAttention(embed_dim, num_heads)
+        self.feed_forward = FeedForward(embed_dim, feed_forward_dim)
         self.affine = nn.layers.Linear(self.embedding.get_dim(), len(vocab))
 
         self.layers = [
             self.embedding,
             self.attention1,
             self.attention2,
+            self.feed_forward,
             self.affine,
         ]
         self.params = sum([layer.params for layer in self.layers], start=[])
@@ -75,12 +109,17 @@ class Decoder(nn.models.Model):
         # second attention
         x = self.attention2.forward(x, encoder_output, encoder_output)
 
+        # feed forward
+        x = self.feed_forward.forward(x)
+
         # affine conversion
         x = self.affine.forward(x)
         return x
 
     def backward(self, dout):
         dout = self.affine.backward(dout)
+
+        dout = self.feed_forward.backward(dout)
 
         dxq, dxk, dxv = self.attention2.backward(dout)
         dout = dxq
@@ -99,6 +138,7 @@ class Transformer(nn.models.Model):
         vocab_ja,
         vocab_en,
         embed_dim,
+        feed_forward_dim,
         num_heads,
         sentence_length,
     ):
@@ -106,12 +146,14 @@ class Transformer(nn.models.Model):
         self.encoder = Encoder(
             vocab_en,
             embed_dim,
+            feed_forward_dim,
             num_heads,
             sentence_length,
         )
         self.decoder = Decoder(
             vocab_ja,
             embed_dim,
+            feed_forward_dim,
             num_heads,
             sentence_length,
         )
