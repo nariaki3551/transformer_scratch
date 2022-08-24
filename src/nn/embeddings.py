@@ -36,3 +36,37 @@ class Random(nn.models.Model):
 
     def backward(self, dout):
         return dout
+
+
+class FastText(nn.models.Model):
+    def __init__(self, language, vocab):
+        super(FastText, self).__init__()
+        self.vocab = vocab
+        self.vectors = torchtext.vocab.FastText(language)
+
+        self.params = []
+        self.grads = []
+
+    def get_dim(self):
+        return self.vectors.dim
+
+    def forward(self, indices):
+        """convert token index to embedded vector
+        Args:
+            indices np.array: (batch_size, sentence_length)
+        Returns:
+            embedded_vec np.array: (batch_size, sentence_length, embed_dim)
+        """
+        batch_size, sentence_length = indices.shape
+
+        embedded_vec = np.zeros(
+            (batch_size, sentence_length, self.vectors.dim), dtype=np.float16
+        )
+        for i in range(batch_size):
+            embedded_vec[i] = self.vectors.get_vecs_by_tokens(
+                self.vocab.lookup_tokens(indices[i])
+            )
+        return embedded_vec
+
+    def backward(self, dout):
+        return dout

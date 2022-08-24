@@ -100,10 +100,20 @@ class EncoderLayer(nn.models.Model):
 
 class Encoder(nn.models.Model):
     def __init__(
-        self, vocab, embed_dim, feed_forward_dim, num_heads, num_layers, sentence_length
+        self,
+        vocab,
+        embed_dim,
+        feed_forward_dim,
+        num_heads,
+        num_layers,
+        sentence_length,
+        embedding=None,
     ):
         super(Encoder, self).__init__()
-        self.embedding = nn.embeddings.Random(vocab, embed_dim)
+        if embedding is not None:
+            self.embedding = embedding
+        else:
+            self.embedding = nn.embeddings.Random(vocab, embed_dim)
         self.positional_encoder = PositionalEncoder(
             self.embedding.get_dim(), sentence_length
         )
@@ -200,10 +210,20 @@ class DecoderLayer(nn.models.Model):
 
 class Decoder(nn.models.Model):
     def __init__(
-        self, vocab, embed_dim, feed_forward_dim, num_heads, num_layers, sentence_length
+        self,
+        vocab,
+        embed_dim,
+        feed_forward_dim,
+        num_heads,
+        num_layers,
+        sentence_length,
+        embedding=None,
     ):
         super(Decoder, self).__init__()
-        self.embedding = nn.embeddings.Random(vocab, embed_dim)
+        if embedding is not None:
+            self.embedding = embedding
+        else:
+            self.embedding = nn.embeddings.Random(vocab, embed_dim)
         self.positional_encoder = PositionalEncoder(
             self.embedding.get_dim(), sentence_length
         )

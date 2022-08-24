@@ -47,6 +47,3 @@ class Model:
 
         for i, param in enumerate(self.params):
             param[...] = params[i]
-
-
-
